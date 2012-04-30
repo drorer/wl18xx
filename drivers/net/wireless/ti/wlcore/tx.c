@@ -673,6 +673,10 @@ void wl1271_tx_work_locked(struct wl1271 *wl)
 	unsigned long active_hlids[BITS_TO_LONGS(WL12XX_MAX_LINKS)] = {0};
 	int ret;
 
+	u32 previous_buf_offset = 0;
+	u32 previous_skb_len = 0;
+	u32 new_total_len = 0;
+
 	if (unlikely(wl->state == WL1271_STATE_OFF))
 		return;
 
@@ -692,6 +696,16 @@ void wl1271_tx_work_locked(struct wl1271 *wl)
 			 * Flush buffer and try again.
 			 */
 			wl1271_skb_queue_head(wl, wlvif, skb);
+
+			if (wl->quirks & WLCORE_QUIRK_TX_PAD_LAST_FRAME) {
+				desc = (struct wl1271_tx_hw_descr *)
+					(wl->aggr_buf + previous_buf_offset);
+				new_total_len = ALIGN(previous_buf_offset +
+					previous_skb_len,
+					WL12XX_BUS_BLOCK_SIZE);
+				buf_offset = new_total_len;
+			}
+
 			wlcore_write_data(wl, REG_SLV_MEM_DATA, wl->aggr_buf,
 					  buf_offset, true);
 			sent_packets = true;
@@ -717,6 +731,8 @@ void wl1271_tx_work_locked(struct wl1271 *wl)
 				ieee80211_free_txskb(wl->hw, skb);
 			goto out_ack;
 		}
+		previous_buf_offset = buf_offset;
+		previous_skb_len = skb->len;
 		buf_offset += ret;
 		wl->tx_packets_count++;
 		if (has_data) {
@@ -727,6 +743,15 @@ void wl1271_tx_work_locked(struct wl1271 *wl)
 
 out_ack:
 	if (buf_offset) {
+		if (wl->quirks & WLCORE_QUIRK_TX_PAD_LAST_FRAME) {
+			desc = (struct wl1271_tx_hw_descr *)
+				(wl->aggr_buf + previous_buf_offset);
+			new_total_len = ALIGN(previous_buf_offset +
+						previous_skb_len,
+						WL12XX_BUS_BLOCK_SIZE);
+			buf_offset = new_total_len;
+		}
+
 		wlcore_write_data(wl, REG_SLV_MEM_DATA, wl->aggr_buf,
 				  buf_offset, true);
 		sent_packets = true;

@@ -56,6 +56,7 @@ static int high_band_component = -1;
 static int high_band_component_type = -1;
 static int pwr_limit_reference_11_abg = -1;
 static bool disable_yield_fix = false;
+static bool enable_pad_last_frame = false;
 
 static const u8 wl18xx_rate_to_idx_2ghz[] = {
 	/* MCS rates are used only with 11n */
@@ -620,6 +621,11 @@ static int wl18xx_identify_chip(struct wl1271 *wl)
 		wl->quirks |= WLCORE_QUIRK_NO_ELP |
 				  WLCORE_QUIRK_FWLOG_NOT_IMPLEMENTED |
 				  WLCORE_QUIRK_RX_BLOCKSIZE_ALIGN;
+		if (enable_pad_last_frame) {
+			wl->quirks |= WLCORE_QUIRK_TX_PAD_LAST_FRAME;
+			/* clear the alignment quirk */
+			wl->quirks &= ~WLCORE_QUIRK_TX_BLOCKSIZE_ALIGN;
+		}
 
 		memcpy(&priv->phy_addresses, &wl18xx_phy_addresses_pg2,
 			sizeof(struct wl18xx_phy_addresses));
@@ -999,6 +1005,10 @@ wl18xx_set_tx_desc_data_len(struct wl1271 *wl, struct wl1271_tx_hw_descr *desc,
 			    struct sk_buff *skb)
 {
 	desc->length = cpu_to_le16(skb->len);
+
+	if (wl->quirks & WLCORE_QUIRK_TX_PAD_LAST_FRAME) {
+		(*(u32 *)desc) = (*(u32 *)desc) | BIT(31);
+	}
 
 	wl1271_debug(DEBUG_TX, "tx_fill_hdr: hlid: %d "
 		     "len: %d life: %d mem: %d", desc->hlid,
@@ -1482,6 +1492,10 @@ MODULE_PARM_DESC(pwr_limit_reference_11_abg, "Power limit reference: u8 "
 module_param(disable_yield_fix, bool, S_IRUSR);
 MODULE_PARM_DESC(disable_yield_fix, "disable yield issue workaround: bool "
 		 "(default is false)");
+
+module_param(enable_pad_last_frame, bool, S_IRUSR);
+MODULE_PARM_DESC(enable_pad_last_frame, "enable last sdio packet padding: "
+		"bool (default is false)");
 
 MODULE_LICENSE("GPL v2");
 MODULE_AUTHOR("Luciano Coelho <coelho@ti.com>");
